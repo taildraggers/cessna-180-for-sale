@@ -42,10 +42,12 @@ LISTING_LINK_RE = re.compile(r"^/classified-(\d+)-(.+)\.html$")
 GENERIC_SITE_TITLE_SNIPPET = "barnstormers.com find aircraft"
 
 # "180", optionally prefixed "C-"/"C" and suffixed with its variant letter
-# (180A ... 180K), but not "180 HP"/"180hp" - an engine rating that shows up
-# in plenty of other airplanes' ads.
+# (180A ... 180K, or "180 H" spaced out - though not a spaced "A" or "I",
+# which are far more often just the next word), but not "180 HP"/"180hp" -
+# an engine rating that shows up in plenty of other airplanes' ads.
 _MODEL_RE = re.compile(
-    r"(?<![\d.])(?:c\s?-?\s?)?180([a-k])?(?!\d)(?![a-z])(?!\s?-?\s?(?:hp|h\.p|horse))",
+    r"(?<![\d.])(?:c\s?-?\s?)?180(?:([a-k])|\s?-?\s?([b-hjk]))?(?!\d)(?![a-z])"
+    r"(?!\s?-?\s?(?:hp|h\.p|horse))",
     re.IGNORECASE,
 )
 # Other Cessna models. A title naming one of these is some other airplane
@@ -60,7 +62,7 @@ def _extract_model(title: str) -> tuple[str, str] | None:
     match = _MODEL_RE.search(title)
     if not match or _OTHER_MODEL_RE.search(title):
         return None
-    return MAKE, "180" + (match.group(1) or "").upper()
+    return MAKE, "180" + (match.group(1) or match.group(2) or "").upper()
 
 
 def _title_from_url(url: str) -> str:
@@ -153,19 +155,6 @@ def scrape() -> list[Listing]:
             print(f"  [search page {page}]: {len(links)} links ({len(new_links)} new)")
             if page == 1 and not links:
                 _debug_dump_hrefs(html)
-            if page <= 2:  # TEMP: pagination diagnostics
-                soup = BeautifulSoup(html, "lxml")
-                pager = sorted({a["href"] for a in soup.find_all("a", href=True)
-                                if "cat_search" in a["href"] or "page" in a["href"].lower()})
-                print(f"  [pager-debug] url={url}")
-                print(f"  [pager-debug] hrefs={pager[:40]}")
-                forms = [(f.get("action"), f.get("method"), [(i.get("name"), i.get("value")) for i in f.find_all(["input", "select"])][:40]) for f in soup.find_all("form")]
-                print(f"  [pager-debug] forms={forms}")
-                body = soup.get_text(" ", strip=True)
-                for m in re.finditer(r".{0,80}(?:of \d+|results?|page \d|next|showing).{0,80}", body, re.IGNORECASE):
-                    print(f"  [pager-debug] text={m.group(0)!r}")
-                onclicks = sorted({t.get("onclick") for t in soup.find_all(onclick=True)})[:20]
-                print(f"  [pager-debug] onclicks={onclicks}")
             seen_this_search |= links
             if not new_links:
                 break
